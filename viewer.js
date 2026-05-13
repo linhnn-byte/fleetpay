@@ -311,7 +311,7 @@ function updateFilterDatalists() {
     cols.forEach(({ id, field }) => {
         const dl = document.getElementById(id);
         if (!dl) return;
-        const unique = [...new Set(payments.map(p => p[field]).filter(v => v && v.toString().trim()))].slice(0, 500);
+        const unique = [...new Set(payments.map(p => p[field]).filter(v => v && v.toString().trim()))].slice(0, 200);
         const frag = document.createDocumentFragment();
         unique.forEach(val => {
             const opt = document.createElement('option');
@@ -413,12 +413,12 @@ function updateDashboard() {
             }
 
             const badge = renderTicketBadge(status, full);
-            return \`<div class="ticket-link-container">
+            return `<div class="ticket-link-container">
                 <a href="\${full}" target="_blank" rel="noopener" class="link-icon" title="Mở phiếu \${clean}">
                     <i class="fa-solid \${icon}"></i>
                 </a>
                 \${badge}
-            </div>\`;
+            </div>`;
         };
 
         const deadlineDisplay = p.paymentDeadline
@@ -438,8 +438,9 @@ function updateDashboard() {
         `;
 
         tr.addEventListener('click', () => {
-            document.querySelectorAll('tr').forEach(r => r.classList.remove('row-clicked'));
+            if (window._activeRow) window._activeRow.classList.remove('row-clicked');
             tr.classList.add('row-clicked');
+            window._activeRow = tr;
         });
 
         frag.appendChild(tr);
@@ -452,7 +453,8 @@ function updateDashboard() {
     document.getElementById('kpiTotalOverdue').textContent  = `${countOverdue} bill`;
     document.getElementById('kpiTotalPaid').textContent     = formatVND(totalPaidThisMonth);
 
-    updateFilterDatalists();
+    // Rebuild datalists sau khi DOM đã render xong, không block frame hiện tại
+    requestAnimationFrame(updateFilterDatalists);
 }
 
 // ── EXPORT ────────────────────────────────────────────────────
