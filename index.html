@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FleetPay – Xem bảng theo dõi</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Ẩn toàn bộ phần chỉ dành cho Admin */
+        #btnAddNew, #btnImportData,
+        .nav-links li[data-target="add-record"],
+        #add-record,
+        #userRole,
+        .action-buttons { display: none !important; }
+
+        /* Badge "Chỉ xem" trên header */
+        .viewer-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            background: #e0f2fe;
+            color: #0369a1;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+
+        /* Overlay nhắc nhập GAS URL */
+        #setupOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
+        #setupOverlay.show { display: flex; }
+        .setup-box {
+            background: #fff;
+            border-radius: 12px;
+            padding: 32px;
+            max-width: 480px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+        .setup-box h2 { margin: 0 0 8px; font-size: 18px; color: #1e293b; }
+        .setup-box p  { margin: 0 0 20px; font-size: 13px; color: #64748b; line-height: 1.5; }
+        .setup-box input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 13px;
+            box-sizing: border-box;
+            margin-bottom: 12px;
+        }
+        .setup-box button {
+            width: 100%;
+            padding: 10px;
+            background: #3b82f6;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .setup-box button:hover { background: #2563eb; }
+        .setup-error { color: #ef4444; font-size: 12px; margin-top: 6px; display: none; }
+    </style>
+</head>
+<body>
+
+<!-- Overlay nhập GAS URL lần đầu -->
+<div id="setupOverlay">
+    <div class="setup-box">
+        <h2><i class="fa-solid fa-link" style="color:#3b82f6"></i> Kết nối dữ liệu</h2>
+        <p>Nhập Google Apps Script URL để tải bảng theo dõi thanh toán.<br>
+           URL này do Admin cung cấp (dạng <code>https://script.google.com/macros/s/.../exec</code>).</p>
+        <input type="url" id="setupUrl" placeholder="https://script.google.com/macros/s/AKfycb.../exec">
+        <div class="setup-error" id="setupError">URL không hợp lệ. Vui lòng kiểm tra lại.</div>
+        <button onclick="connectGAS()"><i class="fa-solid fa-plug"></i> Kết nối & Tải dữ liệu</button>
+    </div>
+</div>
+
+<div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <i class="fa-solid fa-car-side"></i>
+            <h2 style="font-size: 14px;">FleetPay</h2>
+        </div>
+        <ul class="nav-links">
+            <li class="active" data-target="dashboard"><i class="fa-solid fa-chart-pie"></i> Dashboard</li>
+            <li data-target="settings"><i class="fa-solid fa-gear"></i> Cài đặt</li>
+        </ul>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <header class="top-header">
+            <div class="search-bar">
+                <i class="fa-solid fa-search"></i>
+                <input type="text" id="searchInput" placeholder="Tìm kiếm chung...">
+            </div>
+            <div class="user-profile">
+                <div class="sync-status" id="syncStatus">
+                    <i class="fa-solid fa-cloud"></i> <span id="syncText">Đang tải...</span>
+                </div>
+                <span class="viewer-badge"><i class="fa-solid fa-eye"></i> Chỉ xem</span>
+            </div>
+        </header>
+
+        <!-- Dashboard Section -->
+        <section id="dashboard" class="content-section active-section">
+            <div class="page-header" style="margin-bottom: 10px;">
+                <h1 style="font-size: 18px;">Quản lý Thanh toán Bảo dưỡng Sửa chữa</h1>
+                <div>
+                    <button class="btn btn-secondary" id="btnExportExcel" style="margin-right: 10px;">
+                        <i class="fa-solid fa-file-excel"></i> Xuất Excel
+                    </button>
+                    <button class="btn btn-secondary" id="btnRefresh">
+                        <i class="fa-solid fa-rotate-right"></i> Làm mới
+                    </button>
+                </div>
+            </div>
+
+            <!-- Data Table -->
+            <div class="card table-container">
+                <div class="table-header" style="margin-bottom: 10px;">
+                    <div class="table-actions">
+                        <span style="font-size: 13px; color: var(--text-muted);">
+                            <i class="fa-solid fa-info-circle"></i> Sử dụng các ô bên dưới để lọc. Sắp xếp: Nhà cung cấp (A-Z) → Tháng
+                        </span>
+                    </div>
+                </div>
+                <div class="table-scroll">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nhà cung cấp</th>
+                                <th>Tháng TH</th>
+                                <th>Tên Bill</th>
+                                <th>Hạn TT</th>
+                                <th>Số tiền (VNĐ)</th>
+                                <th>Trạng thái</th>
+                                <th>Link ĐNMH</th>
+                                <th>Link ĐNTT</th>
+                                <th>Ghi chú</th>
+                            </tr>
+                            <tr class="filter-row">
+                                <th>
+                                    <input type="text" id="fltSupplier" class="col-filter" placeholder="Lọc NCC..." list="dlSupplier">
+                                    <datalist id="dlSupplier"></datalist>
+                                </th>
+                                <th>
+                                    <input type="text" id="fltMonth" class="col-filter" placeholder="Lọc tháng..." list="dlMonth">
+                                    <datalist id="dlMonth"></datalist>
+                                </th>
+                                <th>
+                                    <input type="text" id="fltBill" class="col-filter" placeholder="Lọc bill..." list="dlBill">
+                                    <datalist id="dlBill"></datalist>
+                                </th>
+                                <th>
+                                    <input type="text" id="fltDeadline" class="col-filter" placeholder="Lọc hạn..." list="dlDeadline">
+                                    <datalist id="dlDeadline"></datalist>
+                                </th>
+                                <th>
+                                    <input type="text" id="fltAmount" class="col-filter" placeholder="Lọc số tiền..." list="dlAmount">
+                                    <datalist id="dlAmount"></datalist>
+                                </th>
+                                <th>
+                                    <select id="fltStatus" class="col-filter">
+                                        <option value="">Tất cả</option>
+                                        <option value="Quá hạn">Quá hạn</option>
+                                        <option value="Sắp đến hạn">Sắp đến hạn</option>
+                                        <option value="Chưa thanh toán">Chưa thanh toán</option>
+                                        <option value="Đã thanh toán">Đã thanh toán</option>
+                                    </select>
+                                </th>
+                                <th>
+                                    <input type="text" id="fltLinkDNMH" class="col-filter" placeholder="Lọc ĐNMH..." list="dlLinkDNMH">
+                                    <datalist id="dlLinkDNMH"></datalist>
+                                </th>
+                                <th>
+                                    <input type="text" id="fltLinkDNTT" class="col-filter" placeholder="Lọc ĐNTT..." list="dlLinkDNTT">
+                                    <datalist id="dlLinkDNTT"></datalist>
+                                </th>
+                                <th>
+                                    <input type="text" id="fltNotes" class="col-filter" placeholder="Lọc ghi chú..." list="dlNotes">
+                                    <datalist id="dlNotes"></datalist>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="paymentTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="table-loading" id="tableLoading">
+                    <i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu...
+                </div>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="kpi-cards kpi-bottom">
+                <div class="card kpi-card">
+                    <div class="kpi-icon pending"><i class="fa-solid fa-hourglass-half"></i></div>
+                    <div class="kpi-details">
+                        <p>Đang chờ thanh toán</p>
+                        <h3 id="kpiTotalPending">0</h3>
+                    </div>
+                </div>
+                <div class="card kpi-card">
+                    <div class="kpi-icon upcoming"><i class="fa-solid fa-clock"></i></div>
+                    <div class="kpi-details">
+                        <p>Sắp đến hạn (7 ngày)</p>
+                        <h3 id="kpiTotalUpcoming">0 bill</h3>
+                    </div>
+                </div>
+                <div class="card kpi-card">
+                    <div class="kpi-icon overdue"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                    <div class="kpi-details">
+                        <p>Quá hạn thanh toán</p>
+                        <h3 id="kpiTotalOverdue">0 bill</h3>
+                    </div>
+                </div>
+                <div class="card kpi-card">
+                    <div class="kpi-icon paid"><i class="fa-solid fa-check-circle"></i></div>
+                    <div class="kpi-details">
+                        <p>Đã thanh toán (Tháng này)</p>
+                        <h3 id="kpiTotalPaid">0</h3>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Settings Section (chỉ cho phép đổi GAS URL) -->
+        <section id="settings" class="content-section">
+            <div class="page-header">
+                <h1>Cài đặt kết nối</h1>
+            </div>
+            <div class="card settings-card">
+                <h3>Kết nối Google Sheets</h3>
+                <p>Nhập URL từ Admin để tải dữ liệu bảng theo dõi thanh toán.</p>
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="apiEndpoint">Google Apps Script Web App URL</label>
+                    <input type="url" id="apiEndpoint" placeholder="https://script.google.com/macros/s/AKfycby.../exec">
+                </div>
+                <button class="btn btn-primary" id="btnSaveSettings">
+                    <i class="fa-solid fa-floppy-disk"></i> Lưu & Tải lại dữ liệu
+                </button>
+                <p style="margin-top: 16px; font-size: 12px; color: #94a3b8;">
+                    <i class="fa-solid fa-lock"></i> Trang này chỉ cho phép <b>xem</b> dữ liệu. Mọi chỉnh sửa phải thực hiện trên máy Admin.
+                </p>
+            </div>
+        </section>
+    </main>
+</div>
+
+<div id="toast" class="toast">Thông báo</div>
+
+<script src="viewer.js"></script>
+</body>
+</html>
