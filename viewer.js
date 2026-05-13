@@ -108,20 +108,28 @@ async function fetchDataFromServer(url) {
     if (syncText)  syncText.textContent = 'Đang tải dữ liệu...';
     if (loading)   loading.style.display = 'block';
 
-    try {
-        const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+    // Timeout 15 giây – GAS đôi khi cold-start chậm
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 15000);
 
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    try {
+        const res = await fetch(url, {
+            method:   'GET',
+            redirect: 'follow',
+            signal:   controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
 
         const text = await res.text();
         let json;
         try {
             json = JSON.parse(text);
         } catch (_) {
-            if (text.toLowerCase().includes('<html')) {
-                throw new Error('GAS chưa Deploy đúng. Vui lòng liên hệ Admin.');
-            }
-            throw new Error('Phản hồi không phải JSON.');
+            if (text.toLowerCase().includes('<html'))
+                throw new Error('GAS chưa Deploy đúng. Liên hệ Admin để tạo New Deployment → Web App → Anyone.');
+            throw new Error('Phản hồi không phải JSON: ' + text.slice(0, 80));
         }
 
         if (json.status === 'success' && Array.isArray(json.data)) {
@@ -132,58 +140,80 @@ async function fetchDataFromServer(url) {
             }));
             localStorage.setItem('fleetPayments_cache', JSON.stringify(payments));
 
-            // Lưu ticketStatuses từ GAS
             if (json.ticketStatuses && typeof json.ticketStatuses === 'object') {
                 ticketStatuses = json.ticketStatuses;
                 localStorage.setItem('fleetTicketStatuses_cache', JSON.stringify(ticketStatuses));
             }
             updateDashboard();
             if (syncText) syncText.textContent = 'Đã đồng bộ ' + new Date().toLocaleTimeString('vi-VN');
-            syncStatus.classList.add('online');
+            if (syncStatus) syncStatus.classList.add('online');
         } else {
-            throw new Error(json.message || 'Lỗi không xác định từ GAS.');
+            throw new Error(json.message || 'GAS trả về lỗi không xác định.');
         }
+
     } catch (e) {
+        clearTimeout(timeoutId);
         console.error('FleetPay fetch error:', e);
-        // Thử load cache
+
+        const isAbort  = e.name === 'AbortError';
+        const errMsg   = isAbort ? 'Timeout 15s – GAS phản hồi quá chậm' : e.message;
+
+        // Thử load cache trước
         const cache = localStorage.getItem('fleetPayments_cache');
         if (cache) {
             try {
-                const raw = JSON.parse(cache);
-                payments = raw.map(p => ({
+                payments = JSON.parse(cache).map(p => ({
                     ...p,
                     executionMonth:  normalizeMonth(p.executionMonth),
                     paymentDeadline: normalizeDate(p.paymentDeadline)
                 }));
             } catch(_) { payments = []; }
-            // Load ticketStatuses cache
             try {
-                const tCache = localStorage.getItem('fleetTicketStatuses_cache');
-                if (tCache) ticketStatuses = JSON.parse(tCache);
+                const tc = localStorage.getItem('fleetTicketStatuses_cache');
+                if (tc) ticketStatuses = JSON.parse(tc);
             } catch(_) {}
             updateDashboard();
             if (syncText) syncText.innerHTML =
-                `<span style="color:#f59e0b" title="${e.message}">⚠ Dùng cache – ${e.message.slice(0,40)}</span>`;
+                `<span style="color:#f59e0b;cursor:help;" title="${errMsg}">⚠ Cache – ${errMsg.slice(0,50)}</span>`;
         } else {
+            // Không có cache → hiện lỗi to trên bảng
+            showFetchError(errMsg);
             if (syncText) syncText.innerHTML =
-                `<span style="color:#ef4444" title="${e.message}">⚠ Lỗi tải: ${e.message.slice(0,50)}</span>`;
+                `<span style="color:#ef4444;cursor:help;" title="${errMsg}">⚠ Lỗi kết nối</span>`;
         }
     } finally {
         if (loading) loading.style.display = 'none';
     }
 }
 
+function showFetchError(msg) {
+    const tbody = document.getElementById('paymentTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = `
+        <tr><td colspan="9" style="text-align:center;padding:40px 20px;color:#64748b;">
+            <div style="font-size:32px;margin-bottom:12px;">⚠️</div>
+            <div style="font-weight:600;font-size:15px;margin-bottom:8px;color:#ef4444;">Không tải được dữ liệu</div>
+            <div style="font-size:13px;margin-bottom:16px;">${msg}</div>
+            <div style="font-size:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;max-width:480px;margin:0 auto;text-align:left;">
+                <b>Cách xử lý:</b><br>
+                1. Vào <b>Cài đặt</b> → kiểm tra GAS URL có đúng dạng <code>/exec</code> không<br>
+                2. Nếu URL đúng: Admin vào GAS → <b>Deploy → New deployment</b> → copy URL mới<br>
+                3. Nhấn <b>Làm mới</b> để thử lại
+            </div>
+        </td></tr>`;
+}
+
 // ── STATUS & SYNC ─────────────────────────────────────────────
 function checkSyncStatus() {
-    const url = localStorage.getItem('fleetApiUrl');
+    const url        = localStorage.getItem('fleetApiUrl');
     const syncStatus = document.getElementById('syncStatus');
     const syncText   = document.getElementById('syncText');
     if (url && url.includes('script.google.com')) {
         syncStatus.classList.add('online');
-        syncText.textContent = 'Đã kết nối Google Sheets';
+        syncText.textContent = 'Đã kết nối GAS';
     } else {
         syncStatus.classList.remove('online');
-        syncText.textContent = 'Chưa kết nối';
+        syncText.innerHTML = '<span style="color:#ef4444">⚠ Chưa có GAS URL – vào Cài đặt để nhập</span>';
     }
 }
 
