@@ -210,7 +210,8 @@ function checkSyncStatus() {
     const syncText   = document.getElementById('syncText');
     if (url && url.includes('script.google.com')) {
         syncStatus.classList.add('online');
-        syncText.textContent = 'Đã kết nối GAS';
+        const tsCount = Object.keys(ticketStatuses).length;
+        syncText.textContent = 'Đã kết nối GAS' + (tsCount > 0 ? ' · ' + tsCount + ' trạng thái phiếu' : '');
     } else {
         syncStatus.classList.remove('online');
         syncText.innerHTML = '<span style="color:#ef4444">⚠ Chưa có GAS URL – vào Cài đặt để nhập</span>';
@@ -221,12 +222,11 @@ function checkSyncStatus() {
 
 function renderTicketBadge(status, href) {
     if (!status) {
-        return `<span class="ticket-status" style="background:#f1f5f9;color:#94a3b8;font-size:10px;">
-                    <i class="fa-solid fa-question"></i> Chưa có
-                </span>`;
+        // Không có trạng thái – chỉ hiển thị icon link, không badge rác
+        return '';
     }
     const lower = status.toLowerCase();
-    let style = '';
+    let style;
     if (lower.includes('hoàn tất') || lower.includes('hoan tat')) {
         style = 'background:#dcfce7;color:#16a34a;';
     } else if (lower.includes('đã duyệt') || lower.includes('da duyet')) {
@@ -238,9 +238,9 @@ function renderTicketBadge(status, href) {
     } else {
         style = 'background:#e0f2fe;color:#0369a1;';
     }
-    return `<a href="${href}" target="_blank" rel="noopener" style="text-decoration:none;">
-                <span class="ticket-status" style="${style}cursor:pointer;" title="${status}">${status}</span>
-            </a>`;
+    return '<a href="' + href + '" target="_blank" rel="noopener" style="text-decoration:none;">' +
+               '<span class="ticket-status" style="' + style + 'cursor:pointer;" title="' + status + '">' + status + '</span>' +
+           '</a>';
 }
 
 
@@ -443,12 +443,12 @@ function updateDashboard() {
             }
 
             const badge = renderTicketBadge(status, full);
-            return `<div class="ticket-link-container">
-                <a href="${full}" target="_blank" rel="noopener" class="link-icon" title="Mở phiếu ${clean}">
-                    <i class="fa-solid ${icon}"></i>
-                </a>
-                ${badge}
-            </div>`;
+            return '<div class="ticket-link-container">' +
+                '<a href="' + full + '" target="_blank" rel="noopener" class="link-icon" title="Mở phiếu ' + clean + '">' +
+                    '<i class="fa-solid ' + icon + '"></i>' +
+                '</a>' +
+                badge +
+            '</div>';
         };
 
         const deadlineDisplay = p.paymentDeadline
