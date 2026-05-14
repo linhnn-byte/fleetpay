@@ -444,10 +444,10 @@ function updateDashboard() {
 
             const badge = renderTicketBadge(status, full);
             return `<div class="ticket-link-container">
-                <a href="\${full}" target="_blank" rel="noopener" class="link-icon" title="Mở phiếu \${clean}">
-                    <i class="fa-solid \${icon}"></i>
+                <a href="${full}" target="_blank" rel="noopener" class="link-icon" title="Mở phiếu ${clean}">
+                    <i class="fa-solid ${icon}"></i>
                 </a>
-                \${badge}
+                ${badge}
             </div>`;
         };
 
